@@ -11,3 +11,15 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+.ant-input:focus,
+.ant-input-password:focus {
+  border-color: #d9d9d9 !important; /* Cor da borda no foco */
+  box-shadow: none !important; /* Remove o sombreamento azul */
+  background-color: white !important; /* Define o fundo branco */
+}
+
+.ant-input[filled],
+.ant-input-password[filled] {
+  background-color: white !important; /* Fundo branco mesmo quando preenchido */
+}
