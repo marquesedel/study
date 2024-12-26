@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { message, Button, Upload, Row, Col, Modal, Spin, Typography, Image } from 'antd';
+import { message, Button, Upload, Row, Col, Modal, Typography, Image } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import supabase from './supabaseClient';
+import Login from './pages/Login';
 
 const { Title } = Typography;
 
@@ -11,8 +13,8 @@ function App() {
   const [uploading, setUploading] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [session, setSession] = useState(null);
 
-  // Função para buscar imagens do Supabase
   const fetchPhotos = async () => {
     setLoading(true);
     const { data, error } = await supabase.from('photos').select('*');
@@ -26,18 +28,31 @@ function App() {
 
   useEffect(() => {
     fetchPhotos();
+
+    // Obter a sessão inicial do Supabase
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    // Listener para mudanças na autenticação
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    // Cancelar a inscrição ao desmontar o componente
+    return () => {
+      if (authListener && authListener.subscription) {
+        authListener.subscription.unsubscribe();
+      }
+    };
   }, []);
 
   const handleUpload = async ({ file, onSuccess, onError }) => {
     setUploading(true);
-
     try {
-      // Usar apenas o nome original do arquivo
       const fileName = file.name;
-
-      // Fazer upload para o Supabase Storage
       const { data, error: uploadError } = await supabase.storage
-        .from('images') // Substitua pelo nome do seu bucket
+        .from('images')
         .upload(`public/${fileName}`, file);
 
       if (uploadError) {
@@ -48,23 +63,20 @@ function App() {
         return;
       }
 
-      // Gerar a URL pública da imagem
       const { data: publicUrlData, error: publicUrlError } = supabase.storage
-      .from('images')
-      .getPublicUrl(`public/${fileName}`);
-    
-    if (publicUrlError || !publicUrlData) {
-      console.error('Erro ao gerar URL pública:', publicUrlError);
-      message.error(`Erro ao obter URL pública da imagem: ${fileName}`);
-      onError(publicUrlError || 'URL pública ausente');
-      setUploading(false);
-      return;
-    }
-    
-    const publicUrl = publicUrlData.publicUrl;
-    console.log('URL pública gerada:', publicUrl);
+        .from('images')
+        .getPublicUrl(`public/${fileName}`);
 
-      // Criar uma linha na tabela photos
+      if (publicUrlError || !publicUrlData) {
+        console.error('Erro ao gerar URL pública:', publicUrlError);
+        message.error(`Erro ao obter URL pública da imagem: ${fileName}`);
+        onError(publicUrlError || 'URL pública ausente');
+        setUploading(false);
+        return;
+      }
+
+      const publicUrl = publicUrlData.publicUrl;
+
       const { error: insertError } = await supabase.from('photos').insert([
         {
           url: publicUrl,
@@ -89,7 +101,7 @@ function App() {
       console.error('Erro inesperado no upload:', error);
       onError(error);
     } finally {
-      fetchPhotos(); // Atualizar a lista de imagens
+      fetchPhotos();
       setUploading(false);
     }
   };
@@ -103,9 +115,19 @@ function App() {
     setIsModalOpen(false);
   };
 
-  return (
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setSession(null);
+  };
+
+  const AppContent = () => (
     <div style={{ padding: '20px' }}>
-      <Title level={3}>Galeria de Imagens</Title>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Title level={3}>Galeria de Imagens</Title>
+        <Button type="primary" danger onClick={handleLogout}>
+          Logout
+        </Button>
+      </div>
       <Upload
         customRequest={handleUpload}
         showUploadList={false}
@@ -141,6 +163,19 @@ function App() {
         />
       </Modal>
     </div>
+  );
+
+  return (
+    <Routes>
+      {session ? (
+        <>
+          <Route path="/" element={<AppContent />} />
+          <Route path="/login" element={<Navigate to="/" />} />
+        </>
+      ) : (
+        <Route path="*" element={<Login />} />
+      )}
+    </Routes>
   );
 }
 
